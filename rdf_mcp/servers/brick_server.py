@@ -97,6 +97,77 @@ def get_brick_tags(term: str) -> list[str]:
 
 
 @mcp.tool()
+def validate_brick_term(term: str, concept_type: Optional[str] = None) -> dict:
+    """
+    Validate if a term is a valid Brick concept and suggest alternatives if not.
+
+    Args:
+        term: The term to validate (e.g., "Air_Handling_Unit", "hasPoint")
+        concept_type: Optional filter - "class" or "property". If None, checks both.
+
+    Returns:
+        Dictionary with validation results and suggestions:
+        - valid: bool - whether the term is valid
+        - type: str - "class", "property", or "unknown"
+        - term: str - the input term
+        - suggestions: list - top 5 similar terms if not valid (empty if valid)
+    """
+    result = {
+        "valid": False,
+        "type": "unknown",
+        "term": term,
+        "suggestions": []
+    }
+
+    # Check if it's a valid class
+    if concept_type is None or concept_type == "class":
+        all_classes = get_terms()
+        if term in all_classes:
+            result["valid"] = True
+            result["type"] = "class"
+            return result
+
+    # Check if it's a valid property
+    if concept_type is None or concept_type == "property":
+        all_properties = get_properties()
+        if term in all_properties:
+            result["valid"] = True
+            result["type"] = "property"
+            return result
+
+    # If not valid, suggest similar terms using SMASH algorithm
+    if not result["valid"]:
+        if concept_type == "class" or concept_type is None:
+            # Search in classes
+            all_classes = get_terms()
+            class_suggestions = sorted(
+                all_classes,
+                key=lambda x: smash_distance(term, x)
+            )[:5]
+            result["suggestions"].extend([{"term": s, "type": "class"} for s in class_suggestions])
+
+        if concept_type == "property" or concept_type is None:
+            # Search in properties
+            all_properties = get_properties()
+            property_suggestions = sorted(
+                all_properties,
+                key=lambda x: smash_distance(term, x)
+            )[:5]
+            result["suggestions"].extend([{"term": s, "type": "property"} for s in property_suggestions])
+
+        # If checking both types, limit to top 5 overall suggestions
+        if concept_type is None and len(result["suggestions"]) > 5:
+            # Sort all suggestions by SMASH distance and keep top 5
+            result["suggestions"] = sorted(
+                result["suggestions"],
+                key=lambda x: smash_distance(term, x["term"])
+            )[:5]
+
+    print(f"Validation result for '{term}': {result}", file=sys.stderr)
+    return result
+
+
+@mcp.tool()
 def get_possible_properties(class_: str) -> list[tuple[str, str]]:
     """Returns pairs of possible (property, object type) for a given brick class"""
     query = """

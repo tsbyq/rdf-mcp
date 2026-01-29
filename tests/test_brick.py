@@ -238,3 +238,100 @@ def test_get_brick_tags(mock_ontology):
     result = get_brick_tags("ClassWithoutTags")
     assert isinstance(result, list)
     assert len(result) == 0
+
+
+@patch("rdf_mcp.servers.brick_server.get_terms")
+@patch("rdf_mcp.servers.brick_server.get_properties")
+def test_validate_brick_term_valid_class(mock_get_properties, mock_get_terms):
+    """Test validate_brick_term with a valid class."""
+    mock_get_terms.return_value = [
+        "Air_Handling_Unit",
+        "Temperature_Sensor",
+        "Zone",
+    ]
+    mock_get_properties.return_value = ["hasPoint", "hasPart", "feeds"]
+
+    from rdf_mcp.servers.brick_server import validate_brick_term
+
+    result = validate_brick_term("Air_Handling_Unit")
+
+    assert isinstance(result, dict)
+    assert result["valid"] is True
+    assert result["type"] == "class"
+    assert result["term"] == "Air_Handling_Unit"
+    assert result["suggestions"] == []
+
+
+@patch("rdf_mcp.servers.brick_server.get_terms")
+@patch("rdf_mcp.servers.brick_server.get_properties")
+def test_validate_brick_term_valid_property(mock_get_properties, mock_get_terms):
+    """Test validate_brick_term with a valid property."""
+    mock_get_terms.return_value = ["Air_Handling_Unit", "Temperature_Sensor"]
+    mock_get_properties.return_value = ["hasPoint", "hasPart", "feeds"]
+
+    from rdf_mcp.servers.brick_server import validate_brick_term
+
+    result = validate_brick_term("hasPoint")
+
+    assert isinstance(result, dict)
+    assert result["valid"] is True
+    assert result["type"] == "property"
+    assert result["term"] == "hasPoint"
+    assert result["suggestions"] == []
+
+
+@patch("rdf_mcp.servers.brick_server.get_terms")
+@patch("rdf_mcp.servers.brick_server.get_properties")
+def test_validate_brick_term_invalid_with_suggestions(
+    mock_get_properties, mock_get_terms
+):
+    """Test validate_brick_term with an invalid term, should return suggestions."""
+    mock_get_terms.return_value = [
+        "Air_Handling_Unit",
+        "Air_Handler",
+        "Air_Temperature_Sensor",
+        "Zone",
+    ]
+    mock_get_properties.return_value = ["hasPoint", "hasPart", "feeds"]
+
+    from rdf_mcp.servers.brick_server import validate_brick_term
+
+    result = validate_brick_term("AirHandlingUnit")  # Typo: should be Air_Handling_Unit
+
+    assert isinstance(result, dict)
+    assert result["valid"] is False
+    assert result["type"] == "unknown"
+    assert result["term"] == "AirHandlingUnit"
+    assert isinstance(result["suggestions"], list)
+    assert len(result["suggestions"]) > 0
+    # Suggestions should have structure with "term" and "type" keys
+    if result["suggestions"]:
+        assert "term" in result["suggestions"][0]
+        assert "type" in result["suggestions"][0]
+
+
+@patch("rdf_mcp.servers.brick_server.get_terms")
+@patch("rdf_mcp.servers.brick_server.get_properties")
+def test_validate_brick_term_with_type_filter(mock_get_properties, mock_get_terms):
+    """Test validate_brick_term with concept_type filter."""
+    mock_get_terms.return_value = ["Air_Handling_Unit", "Temperature_Sensor"]
+    mock_get_properties.return_value = ["hasPoint", "hasPart"]
+
+    from rdf_mcp.servers.brick_server import validate_brick_term
+
+    # Test with concept_type="class"
+    result = validate_brick_term("Air_Handling_Unit", concept_type="class")
+    assert result["valid"] is True
+    assert result["type"] == "class"
+
+    # Test with concept_type="property"
+    result = validate_brick_term("hasPoint", concept_type="property")
+    assert result["valid"] is True
+    assert result["type"] == "property"
+
+    # Test invalid term with concept_type="class" - should only suggest classes
+    result = validate_brick_term("InvalidTerm", concept_type="class")
+    assert result["valid"] is False
+    if result["suggestions"]:
+        # All suggestions should be classes
+        assert all(s["type"] == "class" for s in result["suggestions"])
