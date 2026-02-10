@@ -97,6 +97,22 @@ def get_brick_tags(term: str) -> list[str]:
 
 
 @mcp.tool()
+def get_all_brick_tags() -> list[str]:
+    """Get all predefined tags in the Brick ontology"""
+    query = """
+    PREFIX brick: <https://brickschema.org/schema/Brick#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX tag: <https://brickschema.org/schema/BrickTag#>
+    PREFIX owl: <http://www.w3.org/2002/07/owl#>
+    SELECT DISTINCT ?tag WHERE {
+        ?tag a brick:Tag .
+        FILTER NOT EXISTS { ?tag owl:deprecated true }
+    }"""
+    results = ontology.query(query)
+    return [str(row[0]).split("#")[-1] for row in results]
+
+
+@mcp.tool()
 def validate_brick_term(term: str, concept_type: Optional[str] = None) -> dict:
     """
     Validate if a term is a valid Brick concept and suggest alternatives if not.
@@ -164,6 +180,45 @@ def validate_brick_term(term: str, concept_type: Optional[str] = None) -> dict:
             )[:5]
 
     print(f"Validation result for '{term}': {result}", file=sys.stderr)
+    return result
+
+
+@mcp.tool()
+def validate_brick_tag(tag: str) -> dict:
+    """
+    Validate if a tag is predefined in the Brick ontology and suggest alternatives if not.
+
+    Args:
+        tag: The tag to validate (e.g., "Air", "Sensor", "Temperature")
+
+    Returns:
+        Dictionary with validation results and suggestions:
+        - valid: bool - whether the tag is valid
+        - tag: str - the input tag
+        - suggestions: list - top 5 similar tags if not valid (empty if valid)
+    """
+    result = {
+        "valid": False,
+        "tag": tag,
+        "suggestions": []
+    }
+
+    # Get all valid tags
+    all_tags = get_all_brick_tags()
+    
+    # Check if the tag is valid
+    if tag in all_tags:
+        result["valid"] = True
+        return result
+
+    # If not valid, suggest similar tags using SMASH algorithm
+    tag_suggestions = sorted(
+        all_tags,
+        key=lambda x: smash_distance(tag, x)
+    )[:5]
+    result["suggestions"] = tag_suggestions
+
+    print(f"Validation result for tag '{tag}': {result}", file=sys.stderr)
     return result
 
 

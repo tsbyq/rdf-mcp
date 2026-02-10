@@ -335,3 +335,127 @@ def test_validate_brick_term_with_type_filter(mock_get_properties, mock_get_term
     if result["suggestions"]:
         # All suggestions should be classes
         assert all(s["type"] == "class" for s in result["suggestions"])
+
+
+@patch("rdf_mcp.servers.brick_server.ontology")
+def test_get_all_brick_tags(mock_ontology):
+    """Test get_all_brick_tags function."""
+    # Mock query results for all tags in the ontology
+    mock_ontology.query.return_value = [
+        (
+            MagicMock(
+                __str__=lambda self: "https://brickschema.org/schema/BrickTag#Air"
+            ),
+        ),
+        (
+            MagicMock(
+                __str__=lambda self: "https://brickschema.org/schema/BrickTag#Temperature"
+            ),
+        ),
+        (
+            MagicMock(
+                __str__=lambda self: "https://brickschema.org/schema/BrickTag#Sensor"
+            ),
+        ),
+        (
+            MagicMock(
+                __str__=lambda self: "https://brickschema.org/schema/BrickTag#Zone"
+            ),
+        ),
+        (
+            MagicMock(
+                __str__=lambda self: "https://brickschema.org/schema/BrickTag#Point"
+            ),
+        ),
+    ]
+    from rdf_mcp.servers.brick_server import get_all_brick_tags
+
+    result = get_all_brick_tags()
+
+    # Verify it's a list
+    assert isinstance(result, list)
+
+    # Verify it contains expected tags
+    assert "Air" in result
+    assert "Temperature" in result
+    assert "Sensor" in result
+    assert "Zone" in result
+    assert "Point" in result
+
+    # Verify the query was called
+    mock_ontology.query.assert_called_once()
+
+
+@patch("rdf_mcp.servers.brick_server.get_all_brick_tags")
+def test_validate_brick_tag_valid(mock_get_all_brick_tags):
+    """Test validate_brick_tag with a valid tag."""
+    mock_get_all_brick_tags.return_value = [
+        "Air",
+        "Temperature",
+        "Sensor",
+        "Zone",
+        "Point",
+        "Command",
+        "Status",
+    ]
+
+    from rdf_mcp.servers.brick_server import validate_brick_tag
+
+    result = validate_brick_tag("Temperature")
+
+    assert isinstance(result, dict)
+    assert result["valid"] is True
+    assert result["tag"] == "Temperature"
+    assert result["suggestions"] == []
+
+
+@patch("rdf_mcp.servers.brick_server.get_all_brick_tags")
+def test_validate_brick_tag_invalid_with_suggestions(mock_get_all_brick_tags):
+    """Test validate_brick_tag with an invalid tag, should return suggestions."""
+    mock_get_all_brick_tags.return_value = [
+        "Air",
+        "Temperature",
+        "Sensor",
+        "Zone",
+        "Point",
+        "Command",
+        "Status",
+        "Setpoint",
+    ]
+
+    from rdf_mcp.servers.brick_server import validate_brick_tag
+
+    result = validate_brick_tag("Temprature")  # Typo: should be Temperature
+
+    assert isinstance(result, dict)
+    assert result["valid"] is False
+    assert result["tag"] == "Temprature"
+    assert isinstance(result["suggestions"], list)
+    assert len(result["suggestions"]) > 0
+    assert len(result["suggestions"]) <= 5  # Should suggest at most 5 tags
+    # Temperature should be in the suggestions as it's the closest match
+    assert "Temperature" in result["suggestions"]
+
+
+@patch("rdf_mcp.servers.brick_server.get_all_brick_tags")
+def test_validate_brick_tag_case_sensitivity(mock_get_all_brick_tags):
+    """Test validate_brick_tag handles case variations."""
+    mock_get_all_brick_tags.return_value = [
+        "Air",
+        "Temperature",
+        "Sensor",
+        "Zone",
+    ]
+
+    from rdf_mcp.servers.brick_server import validate_brick_tag
+
+    # Test exact match
+    result = validate_brick_tag("Air")
+    assert result["valid"] is True
+
+    # Test case variation - should be invalid since tags are case-sensitive
+    result = validate_brick_tag("air")
+    assert result["valid"] is False
+    assert isinstance(result["suggestions"], list)
+    # "Air" should be suggested as it's similar
+    assert "Air" in result["suggestions"]
